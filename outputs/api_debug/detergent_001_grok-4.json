@@ -1,0 +1,51 @@
+{
+  "payload_without_images": {
+    "model": "grok-4",
+    "messages": "<omitted>",
+    "temperature": 0.0,
+    "store": false,
+    "max_completion_tokens": 4096,
+    "reasoning_effort": "low",
+    "response_format": {
+      "type": "json_object"
+    }
+  },
+  "response": {
+    "id": "chatcmpl-202607071301415026822528268d9d6THXcFBXB",
+    "model": "grok-4.3",
+    "object": "chat.completion",
+    "created": 1783429325,
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "{\n  \"score\": 0.6666666667,\n  \"success\": 0,\n  \"reason\": \"Two weighted sub-conditions are visibly satisfied.\"\n}"
+        },
+        "finish_reason": "stop"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 121228,
+      "completion_tokens": 601,
+      "total_tokens": 121829,
+      "prompt_tokens_details": {
+        "cached_tokens": 128,
+        "text_tokens": 0,
+        "audio_tokens": 0,
+        "image_tokens": 0
+      },
+      "completion_tokens_details": {
+        "text_tokens": 0,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 0
+      },
+      "input_tokens": 121228,
+      "output_tokens": 601,
+      "input_tokens_details": null,
+      "claude_cache_creation_5_m_tokens": 0,
+      "claude_cache_creation_1_h_tokens": 0
+    }
+  }
+}

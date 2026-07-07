@@ -1,0 +1,50 @@
+{
+  "payload_without_images": {
+    "model": "gemini-2.5-flash",
+    "messages": "<omitted>",
+    "temperature": 0.0,
+    "max_completion_tokens": 4096,
+    "reasoning_effort": "low",
+    "response_format": {
+      "type": "json_object"
+    }
+  },
+  "response": {
+    "id": "chatcmpl-202607071243464455773038268d9d6EWuqgyxb",
+    "model": "gemini-2.5-flash",
+    "object": "chat.completion",
+    "created": 1783428265,
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "{\n  \"score\": 0.6666666667,\n  \"success\": 0,\n  \"reason\": \"Two weighted sub-conditions are visibly satisfied.\"\n}"
+        },
+        "finish_reason": "stop"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 13677,
+      "completion_tokens": 1268,
+      "total_tokens": 14945,
+      "prompt_tokens_details": {
+        "cached_tokens": 0,
+        "text_tokens": 777,
+        "audio_tokens": 0,
+        "image_tokens": 0
+      },
+      "completion_tokens_details": {
+        "text_tokens": 45,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 1223
+      },
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "input_tokens_details": null,
+      "claude_cache_creation_5_m_tokens": 0,
+      "claude_cache_creation_1_h_tokens": 0
+    }
+  }
+}

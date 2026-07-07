@@ -1,0 +1,50 @@
+{
+  "payload_without_images": {
+    "model": "gemini-2.5-flash",
+    "messages": "<omitted>",
+    "temperature": 0.0,
+    "max_completion_tokens": 4096,
+    "reasoning_effort": "low",
+    "response_format": {
+      "type": "json_object"
+    }
+  },
+  "response": {
+    "id": "chatcmpl-202607071242054304533908268d9d6VVmlUIAj",
+    "model": "gemini-2.5-flash",
+    "object": "chat.completion",
+    "created": 1783428133,
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "{\n  \"score\": 1.0,\n  \"success\": 1,\n  \"reason\": \"The bookmark is visibly placed on the open book with significant overlap.\"\n}"
+        },
+        "finish_reason": "stop"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 13559,
+      "completion_tokens": 409,
+      "total_tokens": 13968,
+      "prompt_tokens_details": {
+        "cached_tokens": 0,
+        "text_tokens": 659,
+        "audio_tokens": 0,
+        "image_tokens": 0
+      },
+      "completion_tokens_details": {
+        "text_tokens": 0,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 369
+      },
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "input_tokens_details": null,
+      "claude_cache_creation_5_m_tokens": 0,
+      "claude_cache_creation_1_h_tokens": 0
+    }
+  }
+}

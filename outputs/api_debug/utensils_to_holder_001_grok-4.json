@@ -1,0 +1,51 @@
+{
+  "payload_without_images": {
+    "model": "grok-4",
+    "messages": "<omitted>",
+    "temperature": 0.0,
+    "store": false,
+    "max_completion_tokens": 4096,
+    "reasoning_effort": "low",
+    "response_format": {
+      "type": "json_object"
+    }
+  },
+  "response": {
+    "id": "chatcmpl-202607071303589684428798268d9d6kLx4M4fw",
+    "model": "grok-4.3",
+    "object": "chat.completion",
+    "created": 1783429474,
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "{\"score\": 0.5, \"success\": 0, \"reason\": \"Exactly one half-credit condition is visibly satisfied.\"}"
+        },
+        "finish_reason": "stop"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 121209,
+      "completion_tokens": 225,
+      "total_tokens": 121434,
+      "prompt_tokens_details": {
+        "cached_tokens": 128,
+        "text_tokens": 0,
+        "audio_tokens": 0,
+        "image_tokens": 0
+      },
+      "completion_tokens_details": {
+        "text_tokens": 0,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 0
+      },
+      "input_tokens": 121209,
+      "output_tokens": 225,
+      "input_tokens_details": null,
+      "claude_cache_creation_5_m_tokens": 0,
+      "claude_cache_creation_1_h_tokens": 0
+    }
+  }
+}

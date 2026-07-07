@@ -1,0 +1,60 @@
+{
+  "task_id": "apple_to_fruit_bowl",
+  "episode_id": "002",
+  "rollout_dir": "rollout_video/apple_to_fruit_bowl_test_mini/002",
+  "cameras": [
+    "top_camera.mp4",
+    "overlook_camera.mp4",
+    "left_camera.mp4",
+    "right_camera.mp4"
+  ],
+  "num_frames": 11,
+  "frames_dir": "/home/wangyukai/repos/vlm_eval/outputs/preprocessed_frames/apple_to_fruit_bowl/002/four_camera",
+  "video_paths": [
+    "/home/wangyukai/repos/vlm_eval/rollout_video/apple_to_fruit_bowl_test_mini/002/top_camera.mp4",
+    "/home/wangyukai/repos/vlm_eval/rollout_video/apple_to_fruit_bowl_test_mini/002/overlook_camera.mp4",
+    "/home/wangyukai/repos/vlm_eval/rollout_video/apple_to_fruit_bowl_test_mini/002/left_camera.mp4",
+    "/home/wangyukai/repos/vlm_eval/rollout_video/apple_to_fruit_bowl_test_mini/002/right_camera.mp4"
+  ],
+  "frame_mode": "synced_camera_composite",
+  "frame_counts": {
+    "top_camera.mp4": 302,
+    "overlook_camera.mp4": 302,
+    "left_camera.mp4": 302,
+    "right_camera.mp4": 302
+  },
+  "frame_rates": {
+    "top_camera.mp4": 30.0,
+    "overlook_camera.mp4": 30.0,
+    "left_camera.mp4": 30.0,
+    "right_camera.mp4": 30.0
+  },
+  "sampled_source_frame_count": 302,
+  "sampled_indices": [
+    0,
+    30,
+    60,
+    90,
+    120,
+    150,
+    180,
+    210,
+    240,
+    270,
+    300
+  ],
+  "sample_every_sec": 1.0,
+  "frame_paths": [
+    "/home/wangyukai/repos/vlm_eval/outputs/preprocessed_frames/apple_to_fruit_bowl/002/four_camera/frame_000.jpg",
+    "/home/wangyukai/repos/vlm_eval/outputs/preprocessed_frames/apple_to_fruit_bowl/002/four_camera/frame_001.jpg",
+    "/home/wangyukai/repos/vlm_eval/outputs/preprocessed_frames/apple_to_fruit_bowl/002/four_camera/frame_002.jpg",
+    "/home/wangyukai/repos/vlm_eval/outputs/preprocessed_frames/apple_to_fruit_bowl/002/four_camera/frame_003.jpg",
+    "/home/wangyukai/repos/vlm_eval/outputs/preprocessed_frames/apple_to_fruit_bowl/002/four_camera/frame_004.jpg",
+    "/home/wangyukai/repos/vlm_eval/outputs/preprocessed_frames/apple_to_fruit_bowl/002/four_camera/frame_005.jpg",
+    "/home/wangyukai/repos/vlm_eval/outputs/preprocessed_frames/apple_to_fruit_bowl/002/four_camera/frame_006.jpg",
+    "/home/wangyukai/repos/vlm_eval/outputs/preprocessed_frames/apple_to_fruit_bowl/002/four_camera/frame_007.jpg",
+    "/home/wangyukai/repos/vlm_eval/outputs/preprocessed_frames/apple_to_fruit_bowl/002/four_camera/frame_008.jpg",
+    "/home/wangyukai/repos/vlm_eval/outputs/preprocessed_frames/apple_to_fruit_bowl/002/four_camera/frame_009.jpg",
+    "/home/wangyukai/repos/vlm_eval/outputs/preprocessed_frames/apple_to_fruit_bowl/002/four_camera/frame_010.jpg"
+  ]
+}

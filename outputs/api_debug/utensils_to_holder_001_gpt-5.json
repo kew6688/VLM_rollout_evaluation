@@ -1,0 +1,112 @@
+{
+  "payload_without_images": {
+    "model": "gpt-5",
+    "messages": "<omitted>",
+    "temperature": 0.0,
+    "max_completion_tokens": 2048,
+    "reasoning_effort": "low",
+    "response_format": {
+      "type": "json_object"
+    }
+  },
+  "response": {
+    "choices": [
+      {
+        "content_filter_results": {
+          "hate": {
+            "filtered": false,
+            "severity": "safe"
+          },
+          "protected_material_code": {
+            "detected": false,
+            "filtered": false
+          },
+          "protected_material_text": {
+            "detected": false,
+            "filtered": false
+          },
+          "self_harm": {
+            "filtered": false,
+            "severity": "safe"
+          },
+          "sexual": {
+            "filtered": false,
+            "severity": "safe"
+          },
+          "violence": {
+            "filtered": false,
+            "severity": "safe"
+          }
+        },
+        "finish_reason": "stop",
+        "index": 0,
+        "logprobs": null,
+        "message": {
+          "annotations": [],
+          "content": "{\"score\": 0.5, \"success\": 0}",
+          "refusal": null,
+          "role": "assistant"
+        }
+      }
+    ],
+    "created": 1783427468,
+    "id": "chatcmpl-DyzF6sGLcODpOiYyUvSGRO9ctifNl",
+    "model": "gpt-5-2025-08-07",
+    "object": "chat.completion",
+    "prompt_filter_results": [
+      {
+        "prompt_index": 0,
+        "content_filter_results": {
+          "hate": {
+            "filtered": false,
+            "severity": "safe"
+          },
+          "jailbreak": {
+            "detected": false,
+            "filtered": false
+          },
+          "self_harm": {
+            "filtered": false,
+            "severity": "safe"
+          },
+          "sexual": {
+            "filtered": false,
+            "severity": "safe"
+          },
+          "violence": {
+            "filtered": false,
+            "severity": "safe"
+          }
+        }
+      }
+    ],
+    "service_tier": "default",
+    "system_fingerprint": null,
+    "usage": {
+      "completion_tokens": 152,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "reasoning_tokens": 128,
+        "rejected_prediction_tokens": 0
+      },
+      "latency_checkpoint": {
+        "engine_tbt_ms": 21,
+        "engine_ttft_ms": 1392,
+        "engine_ttlt_ms": 5806,
+        "pre_inference_ms": 4677,
+        "service_tbt_ms": 21,
+        "service_ttft_ms": 6641,
+        "service_ttlt_ms": 11050,
+        "total_duration_ms": 6396,
+        "user_visible_ttft_ms": 1964
+      },
+      "prompt_tokens": 9536,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cached_tokens": 0
+      },
+      "total_tokens": 9688
+    }
+  }
+}
