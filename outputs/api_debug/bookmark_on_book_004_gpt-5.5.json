@@ -3,7 +3,8 @@
     "model": "gpt-5.5",
     "messages": "<omitted>",
     "temperature": 0.0,
-    "max_completion_tokens": 4096,
+    "store": false,
+    "max_completion_tokens": 8192,
     "reasoning_effort": "low",
     "response_format": {
       "type": "json_object"
@@ -43,14 +44,14 @@
         "logprobs": null,
         "message": {
           "annotations": [],
-          "content": "{\"score\":1.0,\"success\":1,\"reason\":\"The required final state is visibly satisfied.\"}",
+          "content": "{\"score\":0.0,\"success\":0,\"reason\":\"The required final state is not visibly satisfied.\"}",
           "refusal": null,
           "role": "assistant"
         }
       }
     ],
-    "created": 1783428123,
-    "id": "chatcmpl-DyzPflxb2NewQRDOAj01ZkbPbB9hx",
+    "created": 1783476848,
+    "id": "chatcmpl-DzC5Y2S6s2plDAFQcJUpu8G328Vx5",
     "model": "gpt-5.5-2026-04-24",
     "object": "chat.completion",
     "prompt_filter_results": [
@@ -83,30 +84,30 @@
     "service_tier": "default",
     "system_fingerprint": null,
     "usage": {
-      "completion_tokens": 384,
+      "completion_tokens": 253,
       "completion_tokens_details": {
         "accepted_prediction_tokens": 0,
         "audio_tokens": 0,
-        "reasoning_tokens": 349,
+        "reasoning_tokens": 217,
         "rejected_prediction_tokens": 0
       },
       "latency_checkpoint": {
-        "engine_tbt_ms": 33,
-        "engine_ttft_ms": 1575,
-        "engine_ttlt_ms": 14077,
-        "pre_inference_ms": 2272,
-        "service_tbt_ms": 33,
-        "service_ttft_ms": 4104,
-        "service_ttlt_ms": 16598,
-        "total_duration_ms": 14343,
-        "user_visible_ttft_ms": 1831
+        "engine_tbt_ms": 22,
+        "engine_ttft_ms": 1454,
+        "engine_ttlt_ms": 6962,
+        "pre_inference_ms": 2409,
+        "service_tbt_ms": 22,
+        "service_ttft_ms": 4161,
+        "service_ttlt_ms": 9641,
+        "total_duration_ms": 7243,
+        "user_visible_ttft_ms": 1751
       },
-      "prompt_tokens": 14054,
+      "prompt_tokens": 14077,
       "prompt_tokens_details": {
         "audio_tokens": 0,
         "cached_tokens": 0
       },
-      "total_tokens": 14438
+      "total_tokens": 14330
     }
   }
 }

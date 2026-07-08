@@ -3,7 +3,8 @@
     "model": "gpt-5",
     "messages": "<omitted>",
     "temperature": 0.0,
-    "max_completion_tokens": 2048,
+    "store": false,
+    "max_completion_tokens": 4096,
     "reasoning_effort": "low",
     "response_format": {
       "type": "json_object"
@@ -43,14 +44,14 @@
         "logprobs": null,
         "message": {
           "annotations": [],
-          "content": "{\"score\": 1.0, \"success\": 1}",
+          "content": "{\"score\": 1.0, \"success\": 1, \"reason\": \"The required final state is visibly satisfied.\"}",
           "refusal": null,
           "role": "assistant"
         }
       }
     ],
-    "created": 1783427288,
-    "id": "chatcmpl-DyzCCPMSDJz8CCiQE19Hk0dEPRnQu",
+    "created": 1783433533,
+    "id": "chatcmpl-Dz0ov6YFwnSDGAemtYwt2cKI4AVtN",
     "model": "gpt-5-2025-08-07",
     "object": "chat.completion",
     "prompt_filter_results": [
@@ -83,7 +84,7 @@
     "service_tier": "default",
     "system_fingerprint": null,
     "usage": {
-      "completion_tokens": 280,
+      "completion_tokens": 293,
       "completion_tokens_details": {
         "accepted_prediction_tokens": 0,
         "audio_tokens": 0,
@@ -91,22 +92,22 @@
         "rejected_prediction_tokens": 0
       },
       "latency_checkpoint": {
-        "engine_tbt_ms": 13,
-        "engine_ttft_ms": 2044,
-        "engine_ttlt_ms": 6185,
-        "pre_inference_ms": 4961,
-        "service_tbt_ms": 13,
-        "service_ttft_ms": 7482,
-        "service_ttlt_ms": 11622,
-        "total_duration_ms": 6677,
-        "user_visible_ttft_ms": 2520
+        "engine_tbt_ms": 82,
+        "engine_ttft_ms": 1113,
+        "engine_ttlt_ms": 28077,
+        "pre_inference_ms": 6742,
+        "service_tbt_ms": 82,
+        "service_ttft_ms": 8381,
+        "service_ttlt_ms": 35336,
+        "total_duration_ms": 28610,
+        "user_visible_ttft_ms": 1639
       },
-      "prompt_tokens": 9453,
+      "prompt_tokens": 10436,
       "prompt_tokens_details": {
         "audio_tokens": 0,
         "cached_tokens": 0
       },
-      "total_tokens": 9733
+      "total_tokens": 10729
     }
   }
 }

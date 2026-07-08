@@ -3,7 +3,8 @@
     "model": "gpt-5",
     "messages": "<omitted>",
     "temperature": 0.0,
-    "max_completion_tokens": 2048,
+    "store": false,
+    "max_completion_tokens": 4096,
     "reasoning_effort": "low",
     "response_format": {
       "type": "json_object"
@@ -43,14 +44,14 @@
         "logprobs": null,
         "message": {
           "annotations": [],
-          "content": "{\"score\": 0.0, \"success\": 0}",
+          "content": "{\"score\": 0.0, \"success\": 0, \"reason\": \"The lid is not on the jar and all coffee beans remain on the tabletop outside the jar at the end.\"}",
           "refusal": null,
           "role": "assistant"
         }
       }
     ],
-    "created": 1783427353,
-    "id": "chatcmpl-DyzDF8uxJXOVlDmuUK1PdjKnNL6al",
+    "created": 1783433692,
+    "id": "chatcmpl-Dz0rU3ROL6oepFwsZBkbyAOvKduIG",
     "model": "gpt-5-2025-08-07",
     "object": "chat.completion",
     "prompt_filter_results": [
@@ -83,30 +84,30 @@
     "service_tier": "default",
     "system_fingerprint": null,
     "usage": {
-      "completion_tokens": 216,
+      "completion_tokens": 307,
       "completion_tokens_details": {
         "accepted_prediction_tokens": 0,
         "audio_tokens": 0,
-        "reasoning_tokens": 192,
+        "reasoning_tokens": 256,
         "rejected_prediction_tokens": 0
       },
       "latency_checkpoint": {
-        "engine_tbt_ms": 37,
-        "engine_ttft_ms": 1886,
-        "engine_ttlt_ms": 11524,
-        "pre_inference_ms": 5034,
-        "service_tbt_ms": 37,
-        "service_ttft_ms": 7498,
-        "service_ttlt_ms": 17128,
-        "total_duration_ms": 12110,
-        "user_visible_ttft_ms": 2465
+        "engine_tbt_ms": 23,
+        "engine_ttft_ms": 7368,
+        "engine_ttlt_ms": 14690,
+        "pre_inference_ms": 20838,
+        "service_tbt_ms": 23,
+        "service_ttft_ms": 29615,
+        "service_ttlt_ms": 36902,
+        "total_duration_ms": 16102,
+        "user_visible_ttft_ms": 8777
       },
-      "prompt_tokens": 9644,
+      "prompt_tokens": 46207,
       "prompt_tokens_details": {
         "audio_tokens": 0,
         "cached_tokens": 0
       },
-      "total_tokens": 9860
+      "total_tokens": 46514
     }
   }
 }

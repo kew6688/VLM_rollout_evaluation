@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import concurrent.futures
 import json
 import os
 import re
@@ -42,6 +43,7 @@ Return JSON only with exactly three keys:
 {"score": number, "success": 0 or 1, "reason": string}
 Set success to 1 if and only if score equals 1. Otherwise set success to 0.
 The reason must be one short sentence explaining the visible evidence behind the score.
+Do not output step-by-step reasoning, frame-by-frame analysis, markdown, or any text outside the JSON object.
 Do not leave the final answer empty. Put the JSON object in the assistant message content.
 """
 
@@ -52,6 +54,9 @@ class RolloutTask:
     episode_id: str
     rollout_dir: str
     prompt: str
+    frame_dir: str | None = None
+    episode_path: str | None = None
+    source: str = "rollout_video"
 
 
 TASK_PROMPTS = {
@@ -220,6 +225,63 @@ def _encode_jpeg_b64(frame: Any, jpeg_quality: int) -> str:
     return base64.b64encode(_encode_jpeg_bytes(frame, jpeg_quality)).decode("utf-8")
 
 
+def _resize_to_max_side(frame: Any, max_side: int | None) -> Any:
+    if max_side is None or max_side <= 0:
+        return frame
+    height, width = frame.shape[:2]
+    largest_side = max(height, width)
+    if largest_side <= max_side:
+        return frame
+    scale = max_side / largest_side
+    new_width = max(1, round(width * scale))
+    new_height = max(1, round(height * scale))
+    cv2 = _load_cv2()
+    return cv2.resize(frame, (new_width, new_height), interpolation=cv2.INTER_AREA)
+
+
+def _decode_jpeg_b64(frame_b64: str) -> Any:
+    import numpy as np
+
+    cv2 = _load_cv2()
+    encoded = np.frombuffer(base64.b64decode(frame_b64), dtype=np.uint8)
+    frame = cv2.imdecode(encoded, cv2.IMREAD_COLOR)
+    if frame is None:
+        raise ValueError("Failed to decode base64 JPEG frame")
+    return frame
+
+
+def compress_encoded_frames(
+    frames: list[str],
+    max_side: int | None,
+    jpeg_quality: int | None,
+) -> tuple[list[str], dict[str, Any]]:
+    should_resize = max_side is not None and max_side > 0
+    should_reencode = jpeg_quality is not None and jpeg_quality > 0
+    if not should_resize and not should_reencode:
+        return frames, {
+            "enabled": False,
+            "max_side": None,
+            "jpeg_quality": None,
+            "base64_chars_before": sum(len(frame) for frame in frames),
+            "base64_chars_after": sum(len(frame) for frame in frames),
+        }
+
+    quality = max(1, min(100, int(jpeg_quality if should_reencode else 85)))
+    compressed_frames = []
+    for frame_b64 in frames:
+        frame = _decode_jpeg_b64(frame_b64)
+        frame = _resize_to_max_side(frame, max_side)
+        compressed_frames.append(_encode_jpeg_b64(frame, quality))
+
+    return compressed_frames, {
+        "enabled": True,
+        "max_side": max_side if should_resize else None,
+        "jpeg_quality": quality,
+        "base64_chars_before": sum(len(frame) for frame in frames),
+        "base64_chars_after": sum(len(frame) for frame in compressed_frames),
+    }
+
+
 def _frame_indices(total: int, fps: float, sample_every_sec: float, num_frames: int | None) -> list[int]:
     if num_frames is not None:
         return _uniform_indices(total, num_frames)
@@ -267,6 +329,7 @@ def sample_single_camera_frames(
     num_frames: int | None,
     jpeg_quality: int,
     output_dir: Path | None = None,
+    max_side: int | None = None,
 ) -> list[str]:
     cv2 = _load_cv2()
     cap = cv2.VideoCapture(str(video_path))
@@ -293,6 +356,7 @@ def sample_single_camera_frames(
                 frames.append(last_frame_b64)
             continue
 
+        frame = _resize_to_max_side(frame, max_side)
         jpeg_bytes = _encode_jpeg_bytes(frame, jpeg_quality)
         if output_dir is not None:
             (output_dir / f"frame_{sample_idx:03d}.jpg").write_bytes(jpeg_bytes)
@@ -312,6 +376,7 @@ def sample_synced_camera_frames(
     num_frames: int | None,
     jpeg_quality: int,
     output_dir: Path | None = None,
+    max_side: int | None = None,
 ) -> tuple[list[str], dict[str, Any]]:
     cv2 = _load_cv2()
     if not cameras:
@@ -324,6 +389,7 @@ def sample_synced_camera_frames(
             num_frames,
             jpeg_quality,
             output_dir=output_dir,
+            max_side=max_side,
         )
         return frames, {
             "video_paths": [str(video_path)],
@@ -390,6 +456,7 @@ def sample_synced_camera_frames(
             top_row = cv2.hconcat(camera_frames[:2])
             bottom_row = cv2.hconcat(camera_frames[2:4])
             composite = cv2.vconcat([top_row, bottom_row])
+            composite = _resize_to_max_side(composite, max_side)
             jpeg_bytes = _encode_jpeg_bytes(composite, jpeg_quality)
             if output_dir is not None:
                 frame_path = output_dir / f"frame_{sample_idx:03d}.jpg"
@@ -411,18 +478,26 @@ def sample_synced_camera_frames(
         "sampled_source_frame_count": sample_total,
         "sampled_indices": indices,
         "sample_every_sec": sample_every_sec,
+        "output_image_max_side": max_side,
         "frame_paths": frame_paths,
     }
 
 
-def load_sim_result(rollout_dir: Path) -> dict[str, Any]:
+def load_sim_result(rollout_dir: Path, frame_metadata: dict[str, Any] | None = None) -> dict[str, Any]:
     result_path = rollout_dir / "result_info.json"
-    with result_path.open("r", encoding="utf-8") as f:
-        result = json.load(f)
+    if result_path.exists():
+        with result_path.open("r", encoding="utf-8") as f:
+            result = json.load(f)
+        result_info_path = str(result_path)
+    elif frame_metadata and isinstance(frame_metadata.get("result_info"), dict):
+        result = frame_metadata["result_info"]
+        result_info_path = str(frame_metadata.get("result_info_path") or result_path)
+    else:
+        raise FileNotFoundError(f"No result_info.json found at {result_path}")
     return {
         "sim_score": result.get("score"),
         "sim_success": result.get("success_rate"),
-        "result_info_path": str(result_path),
+        "result_info_path": result_info_path,
     }
 
 
@@ -458,6 +533,15 @@ def chat_completions_url(api_base_url: str) -> str:
     if base.endswith("/v1"):
         return f"{base}/chat/completions"
     return f"{base}/v1/chat/completions"
+
+
+def resolve_path(repo_root: Path, path: str | Path) -> Path:
+    candidate = Path(path)
+    return candidate if candidate.is_absolute() else repo_root / candidate
+
+
+def safe_path_parts(path: str) -> list[str]:
+    return [safe_name(part) for part in Path(path).parts if part not in ("", ".")]
 
 
 def post_chat_completion(
@@ -498,6 +582,7 @@ def build_chat_payload(
     response_format: bool,
     token_param: str,
     reasoning_effort: str | None,
+    provider_reasoning: str,
     store: bool,
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {
@@ -512,9 +597,51 @@ def build_chat_payload(
         payload["max_completion_tokens"] = max_tokens
     if reasoning_effort:
         payload["reasoning_effort"] = reasoning_effort
+    if provider_reasoning == "disabled":
+        payload["reasoning"] = {"enabled": False}
+    elif provider_reasoning == "exclude":
+        payload["reasoning"] = {"exclude": True}
     if response_format:
         payload["response_format"] = {"type": "json_object"}
     return payload
+
+
+def response_has_error(response: dict[str, Any]) -> bool:
+    return bool(response.get("error"))
+
+
+def is_request_too_large_error(exc: Exception) -> bool:
+    text = str(exc).lower()
+    return (
+        "exceeds maximum allowed content length" in text
+        or "requestsize(bytes)" in text
+        or "request entity too large" in text
+        or "payload too large" in text
+    )
+
+
+def build_rollout_content(
+    task_prompt: str,
+    frames: list[str],
+    image_detail: str,
+    visual_note: str,
+) -> list[dict[str, Any]]:
+    content: list[dict[str, Any]] = [
+        {"type": "text", "text": task_prompt},
+        {"type": "text", "text": visual_note},
+    ]
+    for idx, frame in enumerate(frames):
+        content.append({"type": "text", "text": f"frame_{idx:03d}"})
+        content.append(
+            {
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:image/jpeg;base64,{frame}",
+                    "detail": image_detail,
+                },
+            }
+        )
+    return content
 
 
 def extract_json_object(text: str) -> dict[str, Any]:
@@ -577,6 +704,19 @@ def chat_response_text(response: dict[str, Any]) -> str:
             if isinstance(arguments, str) and arguments.strip():
                 return arguments
 
+    reasoning = message.get("reasoning")
+    if isinstance(reasoning, str) and reasoning.strip():
+        try:
+            extract_json_object(reasoning)
+        except ValueError:
+            if choice.get("finish_reason") == "length":
+                raise ValueError(
+                    "Chat completion spent the output budget on provider reasoning and returned no JSON content. "
+                    "Try --provider-reasoning disabled, --provider-reasoning exclude, or a larger --max-tokens."
+                )
+        else:
+            return reasoning
+
     raise ValueError(
         "Chat completion response message content is empty. "
         f"finish_reason={choice.get('finish_reason')}, response={json.dumps(response, ensure_ascii=False)[:2000]}"
@@ -594,7 +734,8 @@ def write_api_debug(
     debug_dir = repo_root / "outputs" / "api_debug"
     debug_dir.mkdir(parents=True, exist_ok=True)
     safe_model = safe_name(model)
-    debug_path = debug_dir / f"{task.task_id}_{task.episode_id}_{safe_model}_{suffix}.json"
+    safe_episode = safe_name(task.episode_path or task.episode_id)
+    debug_path = debug_dir / f"{task.task_id}_{safe_episode}_{safe_model}_{suffix}.json"
     debug_path.write_text(
         json.dumps(
             {"payload_without_images": payload | {"messages": "<omitted>"}, "response": response},
@@ -604,6 +745,123 @@ def write_api_debug(
         encoding="utf-8",
     )
     return debug_path
+
+
+def debug_paths_for_task(repo_root: Path, task: RolloutTask, model: str) -> list[Path]:
+    debug_dir = repo_root / "outputs" / "api_debug"
+    safe_model = safe_name(model)
+    safe_episode = safe_name(task.episode_path or task.episode_id)
+    base = debug_dir / f"{task.task_id}_{safe_episode}_{safe_model}.json"
+    candidates = [
+        base,
+        debug_dir / f"{task.task_id}_{safe_episode}_{safe_model}_fallback.json",
+    ]
+    candidates.extend(
+        sorted(debug_dir.glob(f"{task.task_id}_{safe_episode}_{safe_model}_*.json"))
+    )
+    if task.source == "rollout_video":
+        legacy_base = debug_dir / f"{task.task_id}_{task.episode_id}_{safe_model}.json"
+        candidates.extend(
+            [
+                legacy_base,
+                debug_dir / f"{task.task_id}_{task.episode_id}_{safe_model}_fallback.json",
+                *sorted(debug_dir.glob(f"{task.task_id}_{task.episode_id}_{safe_model}_*.json")),
+            ]
+        )
+    seen = set()
+    unique_candidates = []
+    for path in candidates:
+        if path not in seen:
+            seen.add(path)
+            unique_candidates.append(path)
+    return unique_candidates
+
+
+def load_row_from_api_debug(
+    task: RolloutTask,
+    repo_root: Path,
+    cameras: list[str],
+    frames_root: Path,
+    model: str,
+    sample_every_sec: float,
+    image_detail: str,
+    api_base_url: str,
+    max_images: int | None,
+) -> dict[str, Any] | None:
+    rollout_dir = resolve_path(repo_root, task.rollout_dir) if task.rollout_dir else repo_root
+    frame_dir = task_frame_dir(frames_root, task, cameras)
+    metadata_path = frame_dir / "metadata.json"
+    frame_metadata = (
+        json.loads(metadata_path.read_text(encoding="utf-8"))
+        if metadata_path.exists()
+        else {
+            "video_paths": [str(rollout_dir / camera) for camera in cameras],
+            "frame_mode": "api_debug_replay",
+            "frame_counts": {},
+        }
+    )
+    source_num_frames = None
+    sent_num_frames = None
+    selected_frame_indices = None
+    if frame_dir.exists():
+        try:
+            cached_frames = load_cached_frames(frame_dir)
+            source_num_frames = len(cached_frames)
+            _, selected_frame_indices = downsample_sequence(cached_frames, max_images)
+            sent_num_frames = len(selected_frame_indices)
+        except ValueError:
+            pass
+
+    for debug_path in debug_paths_for_task(repo_root, task, model):
+        if not debug_path.exists():
+            continue
+        try:
+            debug_data = json.loads(debug_path.read_text(encoding="utf-8"))
+            response = debug_data["response"]
+            raw_text = chat_response_text(response).strip()
+            parsed = validate_model_result(extract_json_object(raw_text))
+        except Exception:
+            continue
+
+        sim_result = load_sim_result(rollout_dir, frame_metadata)
+        return {
+            "task_id": task.task_id,
+            "episode_id": task.episode_id,
+            "episode_path": task.episode_path or f"{task.task_id}/{task.episode_id}",
+            "source": task.source,
+            "rollout_dir": task.rollout_dir,
+            "frame_dir": task.frame_dir,
+            "video_paths": frame_metadata.get("video_paths", []),
+            "cameras": cameras,
+            "frame_mode": frame_metadata.get("frame_mode", "api_debug_replay"),
+            "frame_counts": frame_metadata.get("frame_counts", {}),
+            "model": model,
+            "num_frames": sent_num_frames,
+            "source_num_frames": source_num_frames,
+            "max_images": max_images,
+            "selected_frame_indices": selected_frame_indices,
+            "sample_every_sec": sample_every_sec,
+            "image_detail": image_detail,
+            "api_base_url": api_base_url,
+            "store": None,
+            "response_format": None,
+            "provider_reasoning": None,
+            "token_param": None,
+            "max_tokens": None,
+            "fallback_used": debug_path.name.endswith("_fallback.json"),
+            "request_size_retry_used": None,
+            "from_api_debug": True,
+            "api_debug_path": str(debug_path),
+            "vlm_score": parsed["score"],
+            "vlm_success": parsed["success"],
+            "vlm_reason": parsed["reason"],
+            **sim_result,
+            "agreement": int(parsed["success"] == sim_result["sim_success"]),
+            "raw_response": raw_text,
+            "usage": response.get("usage"),
+        }
+
+    return None
 
 
 def discover_rollout_tasks(repo_root: Path) -> list[RolloutTask]:
@@ -626,14 +884,56 @@ def discover_rollout_tasks(repo_root: Path) -> list[RolloutTask]:
                 episode_id=episode_id,
                 rollout_dir=str(rollout_dir.relative_to(repo_root)),
                 prompt=prompt,
+                episode_path=f"{task_id}/{episode_id}",
             )
         )
     return tasks
 
 
+def discover_preprocessed_tasks(repo_root: Path, frames_root: Path, cameras: list[str]) -> list[RolloutTask]:
+    key = frame_camera_key(cameras)
+    tasks = []
+    for metadata_path in sorted(frames_root.glob(f"**/{key}/metadata.json")):
+        frame_dir = metadata_path.parent
+        try:
+            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"Invalid metadata JSON: {metadata_path}") from exc
+
+        task_id = str(metadata.get("task_id") or frame_dir.parent.parent.name)
+        prompt = TASK_PROMPTS.get(task_id)
+        if prompt is None:
+            continue
+
+        episode_id = str(metadata.get("episode_id") or frame_dir.parent.name)
+        rollout_dir = str(metadata.get("rollout_dir") or "")
+        try:
+            episode_path = str(frame_dir.parent.relative_to(frames_root))
+        except ValueError:
+            episode_path = f"{task_id}/{episode_id}"
+
+        tasks.append(
+            RolloutTask(
+                task_id=task_id,
+                episode_id=episode_id,
+                rollout_dir=rollout_dir,
+                prompt=prompt,
+                frame_dir=str(frame_dir),
+                episode_path=episode_path,
+                source="preprocessed_frames",
+            )
+        )
+    return tasks
+
+
+def frame_camera_key(cameras: list[str]) -> str:
+    return "single_" + cameras[0].replace(".mp4", "") if len(cameras) == 1 else "four_camera"
+
+
 def task_frame_dir(frames_root: Path, task: RolloutTask, cameras: list[str]) -> Path:
-    camera_key = "single_" + cameras[0].replace(".mp4", "") if len(cameras) == 1 else "four_camera"
-    return frames_root / task.task_id / task.episode_id / camera_key
+    if task.frame_dir:
+        return resolve_path(Path.cwd(), task.frame_dir)
+    return frames_root / task.task_id / task.episode_id / frame_camera_key(cameras)
 
 
 def load_cached_frames(frame_dir: Path) -> list[str]:
@@ -667,8 +967,9 @@ def preprocess_task_frames(
     num_frames: int | None,
     jpeg_quality: int,
     frames_root: Path,
+    output_image_max_side: int | None,
 ) -> dict[str, Any]:
-    rollout_dir = repo_root / task.rollout_dir
+    rollout_dir = resolve_path(repo_root, task.rollout_dir)
     frame_dir = task_frame_dir(frames_root, task, cameras)
     frames, frame_metadata = sample_synced_camera_frames(
         rollout_dir,
@@ -677,6 +978,7 @@ def preprocess_task_frames(
         num_frames,
         jpeg_quality,
         output_dir=frame_dir,
+        max_side=output_image_max_side,
     )
     metadata = {
         "task_id": task.task_id,
@@ -685,6 +987,7 @@ def preprocess_task_frames(
         "cameras": cameras,
         "num_frames": len(frames),
         "frames_dir": str(frame_dir),
+        "output_image_max_side": output_image_max_side,
         **frame_metadata,
     }
     (frame_dir / "metadata.json").write_text(
@@ -712,11 +1015,14 @@ def score_task(
     token_param: str,
     reasoning_effort: str | None,
     use_response_format: bool,
+    provider_reasoning: str,
     store: bool,
     timeout: float,
     max_images: int | None,
+    request_image_max_side: int | None,
+    request_jpeg_quality: int | None,
 ) -> dict[str, Any]:
-    rollout_dir = repo_root / task.rollout_dir
+    rollout_dir = resolve_path(repo_root, task.rollout_dir) if task.rollout_dir else repo_root
     frame_dir = task_frame_dir(frames_root, task, cameras)
     if use_preprocessed:
         frames = load_cached_frames(frame_dir)
@@ -746,6 +1052,18 @@ def score_task(
             f"  downsampled request images: {original_num_frames} -> {len(frames)} "
             f"(max_images={max_images})"
         )
+    request_frames, compression_stats = compress_encoded_frames(
+        frames,
+        request_image_max_side,
+        request_jpeg_quality,
+    )
+    if compression_stats["enabled"]:
+        before_mb = compression_stats["base64_chars_before"] / 1024 / 1024
+        after_mb = compression_stats["base64_chars_after"] / 1024 / 1024
+        print(
+            f"  compressed request images: base64 {before_mb:.1f}MB -> {after_mb:.1f}MB "
+            f"(max_side={compression_stats['max_side']}, quality={compression_stats['jpeg_quality']})"
+        )
 
     visual_note = (
         "The following input images are sampled in chronological order. "
@@ -754,21 +1072,8 @@ def score_task(
         "allows, these input images are uniformly downsampled while preserving "
         "chronological order."
     )
-    content: list[dict[str, Any]] = [
-        {"type": "text", "text": task.prompt},
-        {"type": "text", "text": visual_note},
-    ]
-    for idx, frame in enumerate(frames):
-        content.append({"type": "text", "text": f"frame_{idx:03d}"})
-        content.append(
-            {
-                "type": "image_url",
-                "image_url": {
-                    "url": f"data:image/jpeg;base64,{frame}",
-                    "detail": image_detail,
-                },
-            }
-        )
+    content = build_rollout_content(task.prompt, request_frames, image_detail, visual_note)
+    request_size_retry_used = False
 
     payload = build_chat_payload(
         model=model,
@@ -778,19 +1083,118 @@ def score_task(
         response_format=use_response_format,
         token_param=token_param,
         reasoning_effort=reasoning_effort,
+        provider_reasoning=provider_reasoning,
         store=store,
     )
-    response = post_chat_completion(
-        api_base_url=api_base_url,
-        api_key=api_key,
-        payload=payload,
-        timeout=timeout,
-    )
+    while True:
+        try:
+            response = post_chat_completion(
+                api_base_url=api_base_url,
+                api_key=api_key,
+                payload=payload,
+                timeout=timeout,
+            )
+            break
+        except RuntimeError as exc:
+            if not is_request_too_large_error(exc) or len(frames) <= 1:
+                raise
+            request_size_retry_used = True
+            next_max_images = max(1, len(frames) // 2)
+            previous_num_frames = len(frames)
+            frames, relative_indices = downsample_sequence(frames, next_max_images)
+            selected_frame_indices = [
+                selected_frame_indices[idx] for idx in relative_indices
+            ]
+            request_frames, compression_stats = compress_encoded_frames(
+                frames,
+                request_image_max_side,
+                request_jpeg_quality,
+            )
+            content = build_rollout_content(task.prompt, request_frames, image_detail, visual_note)
+            payload = build_chat_payload(
+                model=model,
+                content=content,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                response_format=use_response_format,
+                token_param=token_param,
+                reasoning_effort=reasoning_effort,
+                provider_reasoning=provider_reasoning,
+                store=store,
+            )
+            print(
+                f"  request too large; retrying with {len(frames)} images "
+                f"({previous_num_frames} -> {len(frames)})"
+            )
+    actual_provider_reasoning = provider_reasoning
+    actual_token_param = token_param
+
+    if provider_reasoning != "omit" and response_has_error(response):
+        write_api_debug(
+            repo_root,
+            task,
+            model,
+            payload,
+            response,
+            f"provider_reasoning_{provider_reasoning}_error",
+        )
+        print(
+            f"  provider rejected --provider-reasoning {provider_reasoning}; "
+            "retrying with provider_reasoning=omit"
+        )
+        payload = build_chat_payload(
+            model=model,
+            content=content,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            response_format=use_response_format,
+            token_param=token_param,
+            reasoning_effort=reasoning_effort,
+            provider_reasoning="omit",
+            store=store,
+        )
+        response = post_chat_completion(
+            api_base_url=api_base_url,
+            api_key=api_key,
+            payload=payload,
+            timeout=timeout,
+        )
+        actual_provider_reasoning = f"omit_after_{provider_reasoning}_error"
+
+    if token_param == "max_completion_tokens" and response_has_error(response):
+        write_api_debug(
+            repo_root,
+            task,
+            model,
+            payload,
+            response,
+            "max_completion_tokens_error",
+        )
+        print("  provider rejected max_completion_tokens; retrying with max_tokens")
+        payload = build_chat_payload(
+            model=model,
+            content=content,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            response_format=use_response_format,
+            token_param="max_tokens",
+            reasoning_effort=reasoning_effort,
+            provider_reasoning="omit" if actual_provider_reasoning.startswith("omit_after_") else provider_reasoning,
+            store=store,
+        )
+        response = post_chat_completion(
+            api_base_url=api_base_url,
+            api_key=api_key,
+            payload=payload,
+            timeout=timeout,
+        )
+        actual_token_param = "max_tokens_after_max_completion_tokens_error"
 
     debug_dir = repo_root / "outputs" / "api_debug"
     debug_dir.mkdir(parents=True, exist_ok=True)
     safe_model = safe_name(model)
-    debug_path = debug_dir / f"{task.task_id}_{task.episode_id}_{safe_model}.json"
+    safe_episode = safe_name(task.episode_path or task.episode_id)
+    debug_path = debug_dir / f"{task.task_id}_{safe_episode}_{safe_model}.json"
     debug_path.write_text(
         json.dumps(
             {"payload_without_images": payload | {"messages": "<omitted>"}, "response": response},
@@ -802,10 +1206,57 @@ def score_task(
 
     try:
         raw_text = chat_response_text(response).strip()
-    except ValueError:
+        fallback_used = False
+    except ValueError as exc:
+        fallback_used = True
+        error_text = str(exc)
+        compact_retry = (
+            "message content is empty" in error_text
+            or "spent the output budget" in error_text
+        )
+        fallback_frames = frames
+        fallback_selected_frame_indices = selected_frame_indices
+        fallback_visual_note = visual_note
+        fallback_reasoning_effort = reasoning_effort
+        fallback_max_tokens = max_tokens * 2
+        fallback_token_param = (
+            "max_tokens"
+            if actual_token_param.startswith("max_tokens_after_")
+            else token_param
+        )
+
+        if compact_retry:
+            fallback_frames, fallback_relative_indices = downsample_sequence(
+                frames, min(10, len(frames))
+            )
+            fallback_selected_frame_indices = [
+                selected_frame_indices[idx] for idx in fallback_relative_indices
+            ]
+            fallback_visual_note = (
+                visual_note
+                + " Compact retry: only these uniformly sampled keyframes are provided. "
+                "Focus on the final visible state and return only the JSON object."
+            )
+            fallback_reasoning_effort = None
+            fallback_max_tokens = max(max_tokens, 2048)
+            print(
+                f"  empty model content; retrying compact request with "
+                f"{len(fallback_frames)} images and no reasoning_effort"
+            )
+
+        fallback_request_frames, fallback_compression_stats = compress_encoded_frames(
+            fallback_frames,
+            request_image_max_side,
+            request_jpeg_quality,
+        )
         fallback_payload = build_chat_payload(
             model=model,
-            content=content
+            content=build_rollout_content(
+                task.prompt,
+                fallback_request_frames,
+                image_detail,
+                fallback_visual_note,
+            )
             + [
                 {
                     "type": "text",
@@ -813,10 +1264,11 @@ def score_task(
                 }
             ],
             temperature=temperature,
-            max_tokens=max_tokens * 2,
+            max_tokens=fallback_max_tokens,
             response_format=False,
-            token_param=token_param,
-            reasoning_effort=reasoning_effort,
+            token_param=fallback_token_param,
+            reasoning_effort=fallback_reasoning_effort,
+            provider_reasoning="omit" if actual_provider_reasoning.startswith("omit_after_") else provider_reasoning,
             store=store,
         )
         response = post_chat_completion(
@@ -827,13 +1279,19 @@ def score_task(
         )
         write_api_debug(repo_root, task, model, fallback_payload, response, "fallback")
         raw_text = chat_response_text(response).strip()
+        frames = fallback_frames
+        selected_frame_indices = fallback_selected_frame_indices
+        compression_stats = fallback_compression_stats
     parsed = validate_model_result(extract_json_object(raw_text))
-    sim_result = load_sim_result(rollout_dir)
+    sim_result = load_sim_result(rollout_dir, frame_metadata)
 
     return {
         "task_id": task.task_id,
         "episode_id": task.episode_id,
+        "episode_path": task.episode_path or f"{task.task_id}/{task.episode_id}",
+        "source": task.source,
         "rollout_dir": task.rollout_dir,
+        "frame_dir": str(frame_dir),
         "video_paths": frame_metadata["video_paths"],
         "cameras": cameras,
         "frame_mode": frame_metadata["frame_mode"],
@@ -842,12 +1300,21 @@ def score_task(
         "num_frames": len(frames),
         "source_num_frames": original_num_frames,
         "max_images": max_images,
+        "request_image_max_side": request_image_max_side,
+        "request_jpeg_quality": request_jpeg_quality,
+        "request_image_compression": compression_stats,
         "selected_frame_indices": selected_frame_indices,
         "sample_every_sec": sample_every_sec,
         "image_detail": image_detail,
         "api_base_url": api_base_url,
         "store": store,
         "response_format": "json_object" if use_response_format else "none",
+        "provider_reasoning": actual_provider_reasoning,
+        "token_param": actual_token_param,
+        "max_tokens": max_tokens,
+        "fallback_used": fallback_used,
+        "request_size_retry_used": request_size_retry_used,
+        "from_api_debug": False,
         "vlm_score": parsed["score"],
         "vlm_success": parsed["success"],
         "vlm_reason": parsed["reason"],
@@ -863,6 +1330,19 @@ def write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
     with path.open("w", encoding="utf-8") as f:
         for row in rows:
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+
+def episode_result_path(root: Path, model: str, row: dict[str, Any]) -> Path:
+    episode_path = str(row.get("episode_path") or f"{row.get('task_id')}/{row.get('episode_id')}")
+    return root / safe_name(model) / Path(*safe_path_parts(episode_path)) / "result.json"
+
+
+def write_episode_result(root: Path | None, model: str, row: dict[str, Any]) -> None:
+    if root is None:
+        return
+    path = episode_result_path(root, model, row)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(row, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
 def markdown_cell(value: Any) -> str:
@@ -914,6 +1394,102 @@ def write_report(path: Path, rows: list[dict[str, Any]]) -> None:
             )
 
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def score_task_with_options(
+    task: RolloutTask,
+    args: argparse.Namespace,
+    repo_root: Path,
+    cameras: list[str],
+    frames_root: Path,
+    episode_output_root: Path | None,
+) -> tuple[dict[str, Any], str]:
+    try:
+        if args.use_api_debug:
+            row = load_row_from_api_debug(
+                task=task,
+                repo_root=repo_root,
+                cameras=cameras,
+                frames_root=frames_root,
+                model=args.model,
+                sample_every_sec=args.sample_every_sec,
+                image_detail=args.image_detail,
+                api_base_url=args.api_base_url,
+                max_images=args.max_images if args.max_images > 0 else None,
+            )
+            if row is not None:
+                write_episode_result(episode_output_root, args.model, row)
+                return (
+                    row,
+                    f"reused api_debug vlm_score={row['vlm_score']} "
+                    f"vlm_success={row['vlm_success']} sim_success={row['sim_success']} "
+                    f"agreement={row['agreement']}",
+                )
+
+        row = score_task(
+            task=task,
+            repo_root=repo_root,
+            cameras=cameras,
+            sample_every_sec=args.sample_every_sec,
+            num_frames=args.num_frames,
+            jpeg_quality=args.jpeg_quality,
+            model=args.model,
+            frames_root=frames_root,
+            use_preprocessed=args.use_preprocessed,
+            image_detail=args.image_detail,
+            api_base_url=args.api_base_url,
+            api_key=args.api_key,
+            temperature=args.temperature,
+            max_tokens=args.max_tokens,
+            token_param=args.token_param,
+            reasoning_effort=None if args.reasoning_effort == "none" else args.reasoning_effort,
+            use_response_format=args.response_format == "json_object",
+            provider_reasoning=args.provider_reasoning,
+            store=args.store,
+            timeout=args.timeout,
+            max_images=args.max_images if args.max_images > 0 else None,
+            request_image_max_side=args.request_image_max_side
+            if args.request_image_max_side > 0
+            else None,
+            request_jpeg_quality=args.request_jpeg_quality
+            if args.request_jpeg_quality > 0
+            else None,
+        )
+    except Exception as exc:
+        if not args.continue_on_error:
+            raise
+        row = {
+            "task_id": task.task_id,
+            "episode_id": task.episode_id,
+            "episode_path": task.episode_path or f"{task.task_id}/{task.episode_id}",
+            "source": task.source,
+            "rollout_dir": task.rollout_dir,
+            "frame_dir": task.frame_dir,
+            "model": args.model,
+            "api_base_url": args.api_base_url,
+            "store": args.store,
+            "response_format": args.response_format,
+            "provider_reasoning": args.provider_reasoning,
+            "max_images": args.max_images if args.max_images > 0 else None,
+            "request_image_max_side": args.request_image_max_side
+            if args.request_image_max_side > 0
+            else None,
+            "request_jpeg_quality": args.request_jpeg_quality
+            if args.request_jpeg_quality > 0
+            else None,
+            "image_detail": args.image_detail,
+            "error": str(exc),
+            "agreement": 0,
+        }
+        write_episode_result(episode_output_root, args.model, row)
+        return row, f"error={exc}"
+
+    write_episode_result(episode_output_root, args.model, row)
+    return (
+        row,
+        f"vlm_score={row['vlm_score']} vlm_success={row['vlm_success']} "
+        f"sim_success={row['sim_success']} agreement={row['agreement']}",
+    )
 
 
 def select_tasks(
@@ -979,6 +1555,15 @@ def parse_args() -> argparse.Namespace:
         help="Structured response_format field to send. Use none for providers that reject json_object.",
     )
     parser.add_argument(
+        "--provider-reasoning",
+        choices=["omit", "disabled", "exclude"],
+        default="omit",
+        help=(
+            "Optional provider-specific reasoning control. "
+            "disabled sends reasoning.enabled=false; exclude sends reasoning.exclude=true."
+        ),
+    )
+    parser.add_argument(
         "--max-images",
         type=int,
         default=50,
@@ -1008,6 +1593,27 @@ def parse_args() -> argparse.Namespace:
         help="Sample one synchronized frame every N seconds. Default: 1.0.",
     )
     parser.add_argument("--jpeg-quality", type=int, default=85)
+    parser.add_argument(
+        "--request-image-max-side",
+        type=int,
+        default=768,
+        help=(
+            "Resize images before sending to the API so their longest side is at most this many pixels. "
+            "Use 0 to keep cached image resolution."
+        ),
+    )
+    parser.add_argument(
+        "--request-jpeg-quality",
+        type=int,
+        default=70,
+        help="Re-encode request images with this JPEG quality, 1-100. Use 0 to keep existing bytes.",
+    )
+    parser.add_argument(
+        "--output-image-max-side",
+        type=int,
+        default=0,
+        help="Resize images written by --preprocess-only so their longest side is at most this many pixels.",
+    )
     parser.add_argument(
         "--image-detail",
         default="high",
@@ -1047,7 +1653,22 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Output Markdown report path. Defaults to outputs/{model}_report.md.",
     )
-    parser.add_argument("--frames-root", default="outputs/preprocessed_frames")
+    parser.add_argument(
+        "--frames-root",
+        default="outputs/preprocessed_frames",
+        help="Preprocessed frame root. For eBench use outputs/ebench_preprocessed_frames/<run> or outputs/ebench_preprocessed_frames.",
+    )
+    parser.add_argument(
+        "--task-source",
+        choices=["rollout_video", "preprocessed"],
+        default="rollout_video",
+        help="Discover tasks from rollout_video or recursively from --frames-root metadata.",
+    )
+    parser.add_argument(
+        "--episode-output-root",
+        default="outputs/episode_scores",
+        help="Write one result.json per episode under this root. Use none to disable.",
+    )
     parser.add_argument(
         "--preprocess-only",
         action="store_true",
@@ -1059,6 +1680,11 @@ def parse_args() -> argparse.Namespace:
         help="Read cached frame_*.jpg from --frames-root instead of sampling videos.",
     )
     parser.add_argument(
+        "--use-api-debug",
+        action="store_true",
+        help="Reuse existing outputs/api_debug responses when available instead of calling the API.",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Validate local video/result paths without calling the API.",
@@ -1068,38 +1694,57 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Record failed API calls as error rows and continue scoring later episodes.",
     )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="Number of concurrent API scoring workers. Default: 1.",
+    )
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
     repo_root = Path(__file__).resolve().parent
-    discovered_tasks = discover_rollout_tasks(repo_root)
-    tasks = select_tasks(discovered_tasks, args.tasks, args.episodes)
     cameras = [args.camera] if args.camera else args.cameras
-    frames_root = repo_root / args.frames_root
+    frames_root = resolve_path(repo_root, args.frames_root)
+    discovered_tasks = (
+        discover_preprocessed_tasks(repo_root, frames_root, cameras)
+        if args.task_source == "preprocessed"
+        else discover_rollout_tasks(repo_root)
+    )
+    tasks = select_tasks(discovered_tasks, args.tasks, args.episodes)
     model_name = safe_name(args.model)
     output_jsonl = args.output_jsonl or f"outputs/{model_name}_scores.jsonl"
     report_md = args.report_md or f"outputs/{model_name}_report.md"
+    episode_output_root = (
+        None
+        if str(args.episode_output_root).lower() in ("", "none", "null", "false", "0")
+        else resolve_path(repo_root, args.episode_output_root)
+    )
 
     if args.dry_run:
         for task in tasks:
-            rollout_dir = repo_root / task.rollout_dir
-            video_paths = [rollout_dir / camera for camera in cameras]
-            result_path = rollout_dir / "result_info.json"
+            rollout_dir = resolve_path(repo_root, task.rollout_dir) if task.rollout_dir else None
+            video_paths = [rollout_dir / camera for camera in cameras] if rollout_dir is not None else []
+            result_path = rollout_dir / "result_info.json" if rollout_dir is not None else None
             print(
                 json.dumps(
                     {
                         "task_id": task.task_id,
                         "episode_id": task.episode_id,
+                        "episode_path": task.episode_path,
+                        "source": task.source,
                         "cameras": cameras,
-                        "video_paths": [str(path) for path in video_paths],
+                        "video_paths": [str(path) for path in video_paths] if rollout_dir is not None else [],
                         "videos_exist": {
                             camera: path.exists()
                             for camera, path in zip(cameras, video_paths, strict=True)
-                        },
-                        "result_exists": result_path.exists(),
-                        "result_info_path": str(result_path),
+                        }
+                        if rollout_dir is not None
+                        else {},
+                        "result_exists": result_path.exists() if result_path is not None else None,
+                        "result_info_path": str(result_path) if result_path is not None else None,
                         "frames_dir": str(task_frame_dir(frames_root, task, cameras)),
                     },
                     ensure_ascii=False,
@@ -1118,63 +1763,59 @@ def main() -> None:
                 num_frames=args.num_frames,
                 jpeg_quality=args.jpeg_quality,
                 frames_root=frames_root,
+                output_image_max_side=args.output_image_max_side
+                if args.output_image_max_side > 0
+                else None,
             )
             print(f"  wrote {metadata['num_frames']} frames to {metadata['frames_dir']}")
         return
 
-    rows = []
-    for task in tasks:
-        print(f"Scoring {task.task_id}/{task.episode_id} with {args.model}...")
-        try:
-            row = score_task(
+    worker_count = max(1, args.workers)
+    total_tasks = len(tasks)
+    rows: list[dict[str, Any] | None] = [None] * len(tasks)
+    print(f"Total rollouts to score: {total_tasks}")
+    if worker_count == 1:
+        for idx, task in enumerate(tasks):
+            print(f"[{idx + 1}/{total_tasks}] Scoring {task.task_id}/{task.episode_id} with {args.model}...")
+            row, message = score_task_with_options(
                 task=task,
+                args=args,
                 repo_root=repo_root,
                 cameras=cameras,
-                sample_every_sec=args.sample_every_sec,
-                num_frames=args.num_frames,
-                jpeg_quality=args.jpeg_quality,
-                model=args.model,
                 frames_root=frames_root,
-                use_preprocessed=args.use_preprocessed,
-                image_detail=args.image_detail,
-                api_base_url=args.api_base_url,
-                api_key=args.api_key,
-                temperature=args.temperature,
-                max_tokens=args.max_tokens,
-                token_param=args.token_param,
-                reasoning_effort=None if args.reasoning_effort == "none" else args.reasoning_effort,
-                use_response_format=args.response_format == "json_object",
-                store=args.store,
-                timeout=args.timeout,
-                max_images=args.max_images if args.max_images > 0 else None,
+                episode_output_root=episode_output_root,
             )
-        except Exception as exc:
-            if not args.continue_on_error:
-                raise
-            row = {
-                "task_id": task.task_id,
-                "episode_id": task.episode_id,
-                "rollout_dir": task.rollout_dir,
-                "model": args.model,
-                "api_base_url": args.api_base_url,
-                "store": args.store,
-                "response_format": args.response_format,
-                "max_images": args.max_images if args.max_images > 0 else None,
-                "image_detail": args.image_detail,
-                "error": str(exc),
-                "agreement": 0,
+            rows[idx] = row
+            print(f"[{idx + 1}/{total_tasks}] {task.task_id}/{task.episode_id}: {message}", flush=True)
+    else:
+        print(f"Scoring {total_tasks} rollouts with {args.model} using {worker_count} workers...")
+        with concurrent.futures.ThreadPoolExecutor(max_workers=worker_count) as executor:
+            future_to_item = {
+                executor.submit(
+                    score_task_with_options,
+                    task,
+                    args,
+                    repo_root,
+                    cameras,
+                    frames_root,
+                    episode_output_root,
+                ): (idx, task)
+                for idx, task in enumerate(tasks)
             }
-            rows.append(row)
-            print(f"  error={exc}")
-            continue
-        rows.append(row)
-        print(
-            f"  vlm_score={row['vlm_score']} vlm_success={row['vlm_success']} "
-            f"sim_success={row['sim_success']} agreement={row['agreement']}"
-        )
+            completed = 0
+            for future in concurrent.futures.as_completed(future_to_item):
+                idx, task = future_to_item[future]
+                row, message = future.result()
+                rows[idx] = row
+                completed += 1
+                print(
+                    f"[{completed}/{total_tasks}] {task.task_id}/{task.episode_id}: {message}",
+                    flush=True,
+                )
 
-    write_jsonl(repo_root / output_jsonl, rows)
-    write_report(repo_root / report_md, rows)
+    final_rows = [row for row in rows if row is not None]
+    write_jsonl(repo_root / output_jsonl, final_rows)
+    write_report(repo_root / report_md, final_rows)
     print(f"Wrote {output_jsonl}")
     print(f"Wrote {report_md}")
 

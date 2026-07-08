@@ -3,27 +3,22 @@
     "model": "gpt-5.5",
     "messages": "<omitted>",
     "temperature": 0.0,
-    "max_completion_tokens": 4096,
+    "store": false,
+    "max_completion_tokens": 8192,
     "reasoning_effort": "low",
     "response_format": {
       "type": "json_object"
     }
   },
   "response": {
+    "model": "gpt-5.5-2026-04-24",
+    "service_tier": "default",
     "choices": [
       {
         "content_filter_results": {
           "hate": {
             "filtered": false,
             "severity": "safe"
-          },
-          "protected_material_code": {
-            "detected": false,
-            "filtered": false
-          },
-          "protected_material_text": {
-            "detected": false,
-            "filtered": false
           },
           "self_harm": {
             "filtered": false,
@@ -39,20 +34,42 @@
           }
         },
         "finish_reason": "stop",
-        "index": 0,
         "logprobs": null,
         "message": {
           "annotations": [],
-          "content": "{\"score\":0.0,\"success\":0,\"reason\":\"The apple is still held by the gripper above the bowl rather than visibly placed inside it.\"}",
+          "content": "{\"score\":1.0,\"success\":1,\"reason\":\"The required final state is visibly satisfied.\"}",
           "refusal": null,
           "role": "assistant"
-        }
+        },
+        "index": 0
       }
     ],
-    "created": 1783427910,
-    "id": "chatcmpl-DyzMEAnsX4SSreiXYPGBos2WS6qiw",
-    "model": "gpt-5.5-2026-04-24",
-    "object": "chat.completion",
+    "usage": {
+      "latency_checkpoint": {
+        "pre_inference_ms": 2919,
+        "service_tbt_ms": 11,
+        "service_ttft_ms": 3959,
+        "engine_tbt_ms": 11,
+        "engine_ttft_ms": 930,
+        "user_visible_ttft_ms": 1040,
+        "service_ttlt_ms": 4259,
+        "total_duration_ms": 1360,
+        "engine_ttlt_ms": 1237
+      },
+      "completion_tokens": 29,
+      "prompt_tokens": 14066,
+      "total_tokens": 14095,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "reasoning_tokens": 0,
+        "rejected_prediction_tokens": 0
+      }
+    },
     "prompt_filter_results": [
       {
         "prompt_index": 0,
@@ -60,10 +77,6 @@
           "hate": {
             "filtered": false,
             "severity": "safe"
-          },
-          "jailbreak": {
-            "detected": false,
-            "filtered": false
           },
           "self_harm": {
             "filtered": false,
@@ -80,33 +93,14 @@
         }
       }
     ],
-    "service_tier": "default",
+    "object": "chat.completion",
+    "id": "chatcmpl-DzC4bDyqsXg984xN6KukyNu5vjXzU",
     "system_fingerprint": null,
-    "usage": {
-      "completion_tokens": 136,
-      "completion_tokens_details": {
-        "accepted_prediction_tokens": 0,
-        "audio_tokens": 0,
-        "reasoning_tokens": 90,
-        "rejected_prediction_tokens": 0
-      },
-      "latency_checkpoint": {
-        "engine_tbt_ms": 38,
-        "engine_ttft_ms": 1522,
-        "engine_ttlt_ms": 6641,
-        "pre_inference_ms": 3132,
-        "service_tbt_ms": 38,
-        "service_ttft_ms": 4928,
-        "service_ttlt_ms": 10042,
-        "total_duration_ms": 6926,
-        "user_visible_ttft_ms": 1796
-      },
-      "prompt_tokens": 14043,
-      "prompt_tokens_details": {
-        "audio_tokens": 0,
-        "cached_tokens": 0
-      },
-      "total_tokens": 14179
+    "created": 1783476789,
+    "_llmproxy_fields": {
+      "model_registration": "gpt-55-2026-04-24",
+      "client_id": "editor-assistant-agent-mode",
+      "agent_name": "aiGatewayAgent"
     }
   }
 }

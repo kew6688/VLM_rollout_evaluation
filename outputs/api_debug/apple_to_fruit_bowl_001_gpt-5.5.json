@@ -3,7 +3,8 @@
     "model": "gpt-5.5",
     "messages": "<omitted>",
     "temperature": 0.0,
-    "max_completion_tokens": 4096,
+    "store": false,
+    "max_completion_tokens": 8192,
     "reasoning_effort": "low",
     "response_format": {
       "type": "json_object"
@@ -49,8 +50,8 @@
         }
       }
     ],
-    "created": 1783427891,
-    "id": "chatcmpl-DyzLvkEcieNwmxkuuSVTbgzSRHOGP",
+    "created": 1783476762,
+    "id": "chatcmpl-DzC4Asa2Fv2jJiYobyNKcLsuIy7MG",
     "model": "gpt-5.5-2026-04-24",
     "object": "chat.completion",
     "prompt_filter_results": [
@@ -83,30 +84,30 @@
     "service_tier": "default",
     "system_fingerprint": null,
     "usage": {
-      "completion_tokens": 89,
+      "completion_tokens": 30,
       "completion_tokens_details": {
         "accepted_prediction_tokens": 0,
         "audio_tokens": 0,
-        "reasoning_tokens": 53,
+        "reasoning_tokens": 0,
         "rejected_prediction_tokens": 0
       },
       "latency_checkpoint": {
-        "engine_tbt_ms": 32,
-        "engine_ttft_ms": 3609,
-        "engine_ttlt_ms": 6434,
-        "pre_inference_ms": 16767,
-        "service_tbt_ms": 32,
-        "service_ttft_ms": 20989,
-        "service_ttlt_ms": 23808,
-        "total_duration_ms": 7066,
-        "user_visible_ttft_ms": 4222
+        "engine_tbt_ms": 11,
+        "engine_ttft_ms": 3723,
+        "engine_ttlt_ms": 4059,
+        "pre_inference_ms": 10046,
+        "service_tbt_ms": 13,
+        "service_ttft_ms": 14154,
+        "service_ttlt_ms": 14483,
+        "total_duration_ms": 4505,
+        "user_visible_ttft_ms": 4108
       },
-      "prompt_tokens": 62520,
+      "prompt_tokens": 62543,
       "prompt_tokens_details": {
         "audio_tokens": 0,
         "cached_tokens": 0
       },
-      "total_tokens": 62609
+      "total_tokens": 62573
     }
   }
 }

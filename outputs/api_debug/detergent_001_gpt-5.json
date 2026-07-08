@@ -3,7 +3,8 @@
     "model": "gpt-5",
     "messages": "<omitted>",
     "temperature": 0.0,
-    "max_completion_tokens": 2048,
+    "store": false,
+    "max_completion_tokens": 4096,
     "reasoning_effort": "low",
     "response_format": {
       "type": "json_object"
@@ -43,14 +44,14 @@
         "logprobs": null,
         "message": {
           "annotations": [],
-          "content": "{\"score\": 1.0, \"success\": 1}",
+          "content": "{\"score\": 1.0, \"success\": 1, \"reason\": \"All three detergent bottles are visibly placed inside the wooden basket by the end.\"}",
           "refusal": null,
           "role": "assistant"
         }
       }
     ],
-    "created": 1783427396,
-    "id": "chatcmpl-DyzDw836dsqTKGwUQ8yH8cGpjzXI1",
+    "created": 1783433836,
+    "id": "chatcmpl-Dz0tobMa9f5aEY5H5qvqHcdXKDKos",
     "model": "gpt-5-2025-08-07",
     "object": "chat.completion",
     "prompt_filter_results": [
@@ -83,30 +84,30 @@
     "service_tier": "default",
     "system_fingerprint": null,
     "usage": {
-      "completion_tokens": 664,
+      "completion_tokens": 1708,
       "completion_tokens_details": {
         "accepted_prediction_tokens": 0,
         "audio_tokens": 0,
-        "reasoning_tokens": 640,
+        "reasoning_tokens": 1664,
         "rejected_prediction_tokens": 0
       },
       "latency_checkpoint": {
-        "engine_tbt_ms": 18,
-        "engine_ttft_ms": 2040,
-        "engine_ttlt_ms": 14529,
-        "pre_inference_ms": 3829,
-        "service_tbt_ms": 18,
-        "service_ttft_ms": 6290,
-        "service_ttlt_ms": 18774,
-        "total_duration_ms": 14959,
-        "user_visible_ttft_ms": 2461
+        "engine_tbt_ms": 20,
+        "engine_ttft_ms": 5524,
+        "engine_ttlt_ms": 41125,
+        "pre_inference_ms": 30538,
+        "service_tbt_ms": 20,
+        "service_ttft_ms": 40146,
+        "service_ttlt_ms": 75748,
+        "total_duration_ms": 45276,
+        "user_visible_ttft_ms": 9608
       },
-      "prompt_tokens": 9542,
+      "prompt_tokens": 46160,
       "prompt_tokens_details": {
         "audio_tokens": 0,
         "cached_tokens": 0
       },
-      "total_tokens": 10206
+      "total_tokens": 47868
     }
   }
 }

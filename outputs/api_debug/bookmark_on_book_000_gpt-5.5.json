@@ -3,7 +3,8 @@
     "model": "gpt-5.5",
     "messages": "<omitted>",
     "temperature": 0.0,
-    "max_completion_tokens": 4096,
+    "store": false,
+    "max_completion_tokens": 8192,
     "reasoning_effort": "low",
     "response_format": {
       "type": "json_object"
@@ -43,14 +44,14 @@
         "logprobs": null,
         "message": {
           "annotations": [],
-          "content": "{\"score\":0.0,\"success\":0,\"reason\":\"The bookmark remains beside the open book on the table rather than visibly overlapping the book.\"}",
+          "content": "{\"score\":0.0,\"success\":0,\"reason\":\"The bookmark remains beside the book rather than visibly on top with sufficient overlap.\"}",
           "refusal": null,
           "role": "assistant"
         }
       }
     ],
-    "created": 1783428102,
-    "id": "chatcmpl-DyzPKuaK8FAOzV31xxzQGsyIdhUwc",
+    "created": 1783476828,
+    "id": "chatcmpl-DzC5EwogourALqtgFeVWDL7oPM7fh",
     "model": "gpt-5.5-2026-04-24",
     "object": "chat.completion",
     "prompt_filter_results": [
@@ -83,30 +84,30 @@
     "service_tier": "default",
     "system_fingerprint": null,
     "usage": {
-      "completion_tokens": 126,
+      "completion_tokens": 36,
       "completion_tokens_details": {
         "accepted_prediction_tokens": 0,
         "audio_tokens": 0,
-        "reasoning_tokens": 82,
+        "reasoning_tokens": 0,
         "rejected_prediction_tokens": 0
       },
       "latency_checkpoint": {
-        "engine_tbt_ms": 30,
-        "engine_ttft_ms": 3525,
-        "engine_ttlt_ms": 7363,
-        "pre_inference_ms": 9927,
-        "service_tbt_ms": 30,
-        "service_ttft_ms": 13796,
-        "service_ttlt_ms": 17600,
-        "total_duration_ms": 7688,
-        "user_visible_ttft_ms": 3869
+        "engine_tbt_ms": 13,
+        "engine_ttft_ms": 3801,
+        "engine_ttlt_ms": 4262,
+        "pre_inference_ms": 8377,
+        "service_tbt_ms": 13,
+        "service_ttft_ms": 12489,
+        "service_ttlt_ms": 12936,
+        "total_duration_ms": 4577,
+        "user_visible_ttft_ms": 4112
       },
-      "prompt_tokens": 62531,
+      "prompt_tokens": 62554,
       "prompt_tokens_details": {
         "audio_tokens": 0,
         "cached_tokens": 0
       },
-      "total_tokens": 62657
+      "total_tokens": 62590
     }
   }
 }

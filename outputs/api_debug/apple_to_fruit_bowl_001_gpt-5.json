@@ -3,7 +3,8 @@
     "model": "gpt-5",
     "messages": "<omitted>",
     "temperature": 0.0,
-    "max_completion_tokens": 2048,
+    "store": false,
+    "max_completion_tokens": 4096,
     "reasoning_effort": "low",
     "response_format": {
       "type": "json_object"
@@ -43,14 +44,14 @@
         "logprobs": null,
         "message": {
           "annotations": [],
-          "content": "{\"score\": 0.0, \"success\": 0}",
+          "content": "{\"score\": 0.0, \"success\": 0, \"reason\": \"The apple remains on the table outside the fruit bowl at the end.\"}",
           "refusal": null,
           "role": "assistant"
         }
       }
     ],
-    "created": 1783427271,
-    "id": "chatcmpl-DyzBv43XXLlIqaCFoqcUmkYV7TXjr",
+    "created": 1783433505,
+    "id": "chatcmpl-Dz0oTsyV7xPV0I0UymzFqyqjlF34e",
     "model": "gpt-5-2025-08-07",
     "object": "chat.completion",
     "prompt_filter_results": [
@@ -83,7 +84,7 @@
     "service_tier": "default",
     "system_fingerprint": null,
     "usage": {
-      "completion_tokens": 152,
+      "completion_tokens": 171,
       "completion_tokens_details": {
         "accepted_prediction_tokens": 0,
         "audio_tokens": 0,
@@ -91,22 +92,22 @@
         "rejected_prediction_tokens": 0
       },
       "latency_checkpoint": {
-        "engine_tbt_ms": 16,
-        "engine_ttft_ms": 1014,
-        "engine_ttlt_ms": 4518,
-        "pre_inference_ms": 4742,
-        "service_tbt_ms": 16,
-        "service_ttft_ms": 6328,
-        "service_ttlt_ms": 9824,
-        "total_duration_ms": 5102,
-        "user_visible_ttft_ms": 1586
+        "engine_tbt_ms": 18,
+        "engine_ttft_ms": 5812,
+        "engine_ttlt_ms": 9157,
+        "pre_inference_ms": 22456,
+        "service_tbt_ms": 18,
+        "service_ttft_ms": 30339,
+        "service_ttlt_ms": 33679,
+        "total_duration_ms": 11265,
+        "user_visible_ttft_ms": 7884
       },
-      "prompt_tokens": 9453,
+      "prompt_tokens": 46043,
       "prompt_tokens_details": {
         "audio_tokens": 0,
         "cached_tokens": 0
       },
-      "total_tokens": 9605
+      "total_tokens": 46214
     }
   }
 }
