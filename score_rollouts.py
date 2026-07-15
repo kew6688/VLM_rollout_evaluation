@@ -8,6 +8,8 @@ python3 gpt_score_rollouts.py \
   --use-preprocessed \
   --api-key sk-xxxx \
   --model gpt-4
+
+python3 score_rollouts.py --max-images 50 --max-tokens 20000  --use-api-debug --api-key sk-ogTY963b0zjUj9LRY9P4LBtWB6GTUs1HX7oB7QEqNtg6IxIA --model kimi-k2.6   --task-source preprocessed   --use-preprocessed    --workers 10 --timeout 900 --api-retries 3 --api-retry-backoff 20 --frames-root outputs/ebench_preprocessed_frames
 """
 
 from __future__ import annotations
@@ -18,6 +20,8 @@ import concurrent.futures
 import json
 import os
 import re
+import socket
+import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -39,14 +43,25 @@ Each input image may be a 2x2 synchronized multi-camera composite:
 top-left = top_camera, top-right = overlook_camera, bottom-left = left_camera, bottom-right = right_camera.
 Judge only from visible evidence in the frames.
 Compute score strictly from the task metric.
-Return JSON only with exactly three keys:
+Return JSON only with these required scoring keys:
 {"score": number, "success": 0 or 1, "reason": string}
 Set success to 1 if and only if score equals 1. Otherwise set success to 0.
+By default, include only these three keys unless explicit additional output fields are requested.
 The reason must be one short sentence explaining the visible evidence behind the score.
-Do not output step-by-step reasoning, frame-by-frame analysis, markdown, or any text outside the JSON object.
+Do not output hidden chain-of-thought, frame-by-frame analysis, markdown, or any text outside the JSON object.
+You must output only the JSON object; do not output any analysis, explanation, notes, or prose before or after it.
 Do not leave the final answer empty. Put the JSON object in the assistant message content.
 """
 
+
+EVIDENCE_OUTPUT_INSTRUCTION = """
+Additional output requirement:
+Return JSON with these keys:
+{"score": number, "success": 0 or 1, "reason": string, "evidence": [string], "metric_breakdown": object}
+- evidence: 2 to 5 short strings listing only visible observations from the input frames.
+- metric_breakdown: a compact object describing each metric condition, its weight or contribution, whether it is visibly satisfied, and the visible evidence used.
+- Do not include hidden chain-of-thought. Provide only concise observable evidence and metric arithmetic needed to audit the score.
+"""
 
 @dataclass(frozen=True)
 class RolloutTask:
@@ -70,8 +85,9 @@ Metric:
 - score = 0.0 otherwise.
 
 Scoring:
-- If the apple is visibly inside the fruit bowl at the end of the rollout, return {"score": 1.0, "success": 1, "reason": "The required final state is visibly satisfied."}.
-- If the apple is not inside the fruit bowl, is dropped outside, only touched, only moved near the bowl, or the final state is ambiguous, return {"score": 0.0, "success": 0, "reason": "The required final state is not visibly satisfied."}.
+- If the apple is visibly inside the fruit bowl at the end of the rollout, set score = 1.0 and success = 1.
+- If the apple is not inside the fruit bowl, is dropped outside, only touched, only moved near the bowl, or the final state is ambiguous, set score = 0.0 and success = 0.
+- Write the reason yourself from the visible final-state evidence.
 """,
     "bookmark_on_book": COMMON_PROMPT
     + """
@@ -83,8 +99,9 @@ Metric:
 - score = 0.0 otherwise.
 
 Scoring:
-- If the bookmark is visibly on top of the book and at least about 40% of the bookmark overlaps the book, return {"score": 1.0, "success": 1, "reason": "The required final state is visibly satisfied."}.
-- If the bookmark is not on the book, overlaps less than about 40%, is dropped elsewhere, only touched, or the final state is ambiguous, return {"score": 0.0, "success": 0, "reason": "The required final state is not visibly satisfied."}.
+- If the bookmark is visibly on top of the book and at least about 40% of the bookmark overlaps the book, set score = 1.0 and success = 1.
+- If the bookmark is not on the book, overlaps less than about 40%, is dropped elsewhere, set score = 0.0 and success = 0.
+- Write the reason yourself from the visible final-state evidence.
 """,
     "detergent": COMMON_PROMPT
     + """
@@ -98,11 +115,12 @@ Metric:
 - success = 1 only if all 3 detergent items are completed, so score = 1.0.
 
 Scoring:
-- If 0 detergent items are completed, return {"score": 0.0, "success": 0, "reason": "The required final state is not visibly satisfied."}.
-- If 1 detergent item is completed, return {"score": 0.3333333333, "success": 0, "reason": "Only one weighted sub-condition is visibly satisfied."}.
-- If 2 detergent items are completed, return {"score": 0.6666666667, "success": 0, "reason": "Two weighted sub-conditions are visibly satisfied."}.
-- If 3 detergent items are completed, return {"score": 1.0, "success": 1, "reason": "The required final state is visibly satisfied."}.
+- If 0 detergent items are completed, set score = 0.0 and success = 0.
+- If 1 detergent item is completed, set score = 0.3333333333 and success = 0.
+- If 2 detergent items are completed, set score = 0.6666666667 and success = 0.
+- If 3 detergent items are completed, set score = 1.0 and success = 1.
 - Count only detergent items whose final required state is visibly completed. Do not count items that are only contacted, moved partway, dropped, or ambiguous.
+- Write the reason yourself from the visible evidence and the number of completed detergent items.
 """,
     "utensils_to_holder": COMMON_PROMPT
     + """
@@ -117,10 +135,11 @@ Metric:
 - success = 1 only if both spoon and fork are on the holder, so score = 1.0.
 
 Scoring:
-- If neither utensil is on the holder, return {"score": 0.0, "success": 0, "reason": "The required final state is not visibly satisfied."}.
-- If exactly one of the spoon or fork is on the holder, return {"score": 0.5, "success": 0, "reason": "Exactly one half-credit condition is visibly satisfied."}.
-- If both the spoon and fork are on the holder, return {"score": 1.0, "success": 1, "reason": "The required final state is visibly satisfied."}.
+- If neither utensil is on the holder, set score = 0.0 and success = 0.
+- If exactly one of the spoon or fork is on the holder, set score = 0.5 and success = 0.
+- If both the spoon and fork are on the holder, set score = 1.0 and success = 1.
 - Do not count a utensil that is only touched, moved near the holder, dropped outside the holder, or visually ambiguous.
+- Write the reason yourself from the visible evidence for which utensils are on the holder.
 """,
     "put_glass_in_glassbox": COMMON_PROMPT
     + """
@@ -129,8 +148,8 @@ Instruction: Put the glasses into the glasses box, fold the temples, and close t
 
 Metric:
 - Both temples of the glasses folded is worth 1/3.
-- The glasses box closed is worth 1/3.
-- The glasses inside the glasses box is worth 1/3.
+- The glasses box fully closed is worth 1/3.
+- The glasses completely inside the glasses box is worth 1/3.
 - score = (1/3) * temples_folded + (1/3) * box_closed + (1/3) * glasses_inside_box.
 - success = 1 only if all three conditions are satisfied, so score = 1.0.
 
@@ -184,6 +203,12 @@ SCORE_SCHEMA = {
 
 
 DEFAULT_API_BASE_URL = "http://35.220.164.252:3888"
+
+
+def task_prompt_with_explanation(task_prompt: str, explanation_mode: str) -> str:
+    if explanation_mode == "evidence":
+        return task_prompt + EVIDENCE_OUTPUT_INSTRUCTION
+    return task_prompt
 
 
 def safe_name(name: str) -> str:
@@ -502,7 +527,7 @@ def load_sim_result(rollout_dir: Path, frame_metadata: dict[str, Any] | None = N
 
 
 def validate_model_result(result: dict[str, Any]) -> dict[str, Any]:
-    allowed_keys = {"score", "success", "reason"}
+    allowed_keys = {"score", "success", "reason", "evidence", "metric_breakdown"}
     if not {"score", "success"}.issubset(result):
         raise ValueError(f"Expected at least score/success keys, got: {result}")
     extra_keys = set(result) - allowed_keys
@@ -523,7 +548,16 @@ def validate_model_result(result: dict[str, Any]) -> dict[str, Any]:
             f"success must be 1 iff score == 1.0, got score={score}, success={success}"
         )
 
-    return {"score": score, "success": success, "reason": reason}
+    parsed = {"score": score, "success": success, "reason": reason}
+    if "evidence" in result:
+        evidence = result["evidence"]
+        if isinstance(evidence, list):
+            parsed["evidence"] = [str(item).strip() for item in evidence if str(item).strip()]
+        elif evidence is not None:
+            parsed["evidence"] = [str(evidence).strip()]
+    if "metric_breakdown" in result:
+        parsed["metric_breakdown"] = result["metric_breakdown"]
+    return parsed
 
 
 def chat_completions_url(api_base_url: str) -> str:
@@ -549,6 +583,8 @@ def post_chat_completion(
     api_key: str | None,
     payload: dict[str, Any],
     timeout: float,
+    retries: int = 0,
+    retry_backoff: float = 5.0,
 ) -> dict[str, Any]:
     headers = {"Content-Type": "application/json"}
     if api_key:
@@ -562,16 +598,30 @@ def post_chat_completion(
         method="POST",
     )
 
-    try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            body = response.read().decode("utf-8")
-    except urllib.error.HTTPError as exc:
-        error_body = exc.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"API HTTP {exc.code}: {error_body}") from exc
-    except urllib.error.URLError as exc:
-        raise RuntimeError(f"API request failed: {exc}") from exc
+    attempts = max(0, retries) + 1
+    for attempt in range(1, attempts + 1):
+        try:
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                body = response.read().decode("utf-8")
+            return json.loads(body)
+        except urllib.error.HTTPError as exc:
+            error_body = exc.read().decode("utf-8", errors="replace")
+            raise RuntimeError(f"API HTTP {exc.code}: {error_body}") from exc
+        except (TimeoutError, socket.timeout, urllib.error.URLError) as exc:
+            if attempt >= attempts:
+                raise RuntimeError(
+                    f"API request failed after {attempt}/{attempts} attempt(s): {exc}"
+                ) from exc
+            sleep_sec = max(0.0, retry_backoff) * attempt
+            print(
+                f"  API request timed out/failed ({attempt}/{attempts}): {exc}; "
+                f"retrying same payload in {sleep_sec:.1f}s",
+                flush=True,
+            )
+            if sleep_sec:
+                time.sleep(sleep_sec)
 
-    return json.loads(body)
+    raise RuntimeError("API request failed unexpectedly")
 
 
 def build_chat_payload(
@@ -855,6 +905,8 @@ def load_row_from_api_debug(
             "vlm_score": parsed["score"],
             "vlm_success": parsed["success"],
             "vlm_reason": parsed["reason"],
+            "vlm_evidence": parsed.get("evidence"),
+            "vlm_metric_breakdown": parsed.get("metric_breakdown"),
             **sim_result,
             "agreement": int(parsed["success"] == sim_result["sim_success"]),
             "raw_response": raw_text,
@@ -1018,9 +1070,12 @@ def score_task(
     provider_reasoning: str,
     store: bool,
     timeout: float,
+    api_retries: int,
+    api_retry_backoff: float,
     max_images: int | None,
     request_image_max_side: int | None,
     request_jpeg_quality: int | None,
+    explanation_mode: str,
 ) -> dict[str, Any]:
     rollout_dir = resolve_path(repo_root, task.rollout_dir) if task.rollout_dir else repo_root
     frame_dir = task_frame_dir(frames_root, task, cameras)
@@ -1072,7 +1127,8 @@ def score_task(
         "allows, these input images are uniformly downsampled while preserving "
         "chronological order."
     )
-    content = build_rollout_content(task.prompt, request_frames, image_detail, visual_note)
+    task_prompt = task_prompt_with_explanation(task.prompt, explanation_mode)
+    content = build_rollout_content(task_prompt, request_frames, image_detail, visual_note)
     request_size_retry_used = False
 
     payload = build_chat_payload(
@@ -1093,6 +1149,8 @@ def score_task(
                 api_key=api_key,
                 payload=payload,
                 timeout=timeout,
+                retries=api_retries,
+                retry_backoff=api_retry_backoff,
             )
             break
         except RuntimeError as exc:
@@ -1110,7 +1168,7 @@ def score_task(
                 request_image_max_side,
                 request_jpeg_quality,
             )
-            content = build_rollout_content(task.prompt, request_frames, image_detail, visual_note)
+            content = build_rollout_content(task_prompt, request_frames, image_detail, visual_note)
             payload = build_chat_payload(
                 model=model,
                 content=content,
@@ -1158,6 +1216,8 @@ def score_task(
             api_key=api_key,
             payload=payload,
             timeout=timeout,
+            retries=api_retries,
+            retry_backoff=api_retry_backoff,
         )
         actual_provider_reasoning = f"omit_after_{provider_reasoning}_error"
 
@@ -1187,6 +1247,8 @@ def score_task(
             api_key=api_key,
             payload=payload,
             timeout=timeout,
+            retries=api_retries,
+            retry_backoff=api_retry_backoff,
         )
         actual_token_param = "max_tokens_after_max_completion_tokens_error"
 
@@ -1204,84 +1266,8 @@ def score_task(
         encoding="utf-8",
     )
 
-    try:
-        raw_text = chat_response_text(response).strip()
-        fallback_used = False
-    except ValueError as exc:
-        fallback_used = True
-        error_text = str(exc)
-        compact_retry = (
-            "message content is empty" in error_text
-            or "spent the output budget" in error_text
-        )
-        fallback_frames = frames
-        fallback_selected_frame_indices = selected_frame_indices
-        fallback_visual_note = visual_note
-        fallback_reasoning_effort = reasoning_effort
-        fallback_max_tokens = max_tokens * 2
-        fallback_token_param = (
-            "max_tokens"
-            if actual_token_param.startswith("max_tokens_after_")
-            else token_param
-        )
-
-        if compact_retry:
-            fallback_frames, fallback_relative_indices = downsample_sequence(
-                frames, min(10, len(frames))
-            )
-            fallback_selected_frame_indices = [
-                selected_frame_indices[idx] for idx in fallback_relative_indices
-            ]
-            fallback_visual_note = (
-                visual_note
-                + " Compact retry: only these uniformly sampled keyframes are provided. "
-                "Focus on the final visible state and return only the JSON object."
-            )
-            fallback_reasoning_effort = None
-            fallback_max_tokens = max(max_tokens, 2048)
-            print(
-                f"  empty model content; retrying compact request with "
-                f"{len(fallback_frames)} images and no reasoning_effort"
-            )
-
-        fallback_request_frames, fallback_compression_stats = compress_encoded_frames(
-            fallback_frames,
-            request_image_max_side,
-            request_jpeg_quality,
-        )
-        fallback_payload = build_chat_payload(
-            model=model,
-            content=build_rollout_content(
-                task.prompt,
-                fallback_request_frames,
-                image_detail,
-                fallback_visual_note,
-            )
-            + [
-                {
-                    "type": "text",
-                    "text": 'Return only a JSON object now, for example {"score": 0.0, "success": 0, "reason": "The required final state is not visibly satisfied."}.',
-                }
-            ],
-            temperature=temperature,
-            max_tokens=fallback_max_tokens,
-            response_format=False,
-            token_param=fallback_token_param,
-            reasoning_effort=fallback_reasoning_effort,
-            provider_reasoning="omit" if actual_provider_reasoning.startswith("omit_after_") else provider_reasoning,
-            store=store,
-        )
-        response = post_chat_completion(
-            api_base_url=api_base_url,
-            api_key=api_key,
-            payload=fallback_payload,
-            timeout=timeout,
-        )
-        write_api_debug(repo_root, task, model, fallback_payload, response, "fallback")
-        raw_text = chat_response_text(response).strip()
-        frames = fallback_frames
-        selected_frame_indices = fallback_selected_frame_indices
-        compression_stats = fallback_compression_stats
+    fallback_used = False
+    raw_text = chat_response_text(response).strip()
     parsed = validate_model_result(extract_json_object(raw_text))
     sim_result = load_sim_result(rollout_dir, frame_metadata)
 
@@ -1306,7 +1292,11 @@ def score_task(
         "selected_frame_indices": selected_frame_indices,
         "sample_every_sec": sample_every_sec,
         "image_detail": image_detail,
+        "explanation_mode": explanation_mode,
         "api_base_url": api_base_url,
+        "timeout": timeout,
+        "api_retries": api_retries,
+        "api_retry_backoff": api_retry_backoff,
         "store": store,
         "response_format": "json_object" if use_response_format else "none",
         "provider_reasoning": actual_provider_reasoning,
@@ -1318,6 +1308,8 @@ def score_task(
         "vlm_score": parsed["score"],
         "vlm_success": parsed["success"],
         "vlm_reason": parsed["reason"],
+        "vlm_evidence": parsed.get("evidence"),
+        "vlm_metric_breakdown": parsed.get("metric_breakdown"),
         **sim_result,
         "agreement": int(parsed["success"] == sim_result["sim_success"]),
         "raw_response": raw_text,
@@ -1447,6 +1439,8 @@ def score_task_with_options(
             provider_reasoning=args.provider_reasoning,
             store=args.store,
             timeout=args.timeout,
+            api_retries=args.api_retries,
+            api_retry_backoff=args.api_retry_backoff,
             max_images=args.max_images if args.max_images > 0 else None,
             request_image_max_side=args.request_image_max_side
             if args.request_image_max_side > 0
@@ -1454,6 +1448,7 @@ def score_task_with_options(
             request_jpeg_quality=args.request_jpeg_quality
             if args.request_jpeg_quality > 0
             else None,
+            explanation_mode=args.explanation_mode,
         )
     except Exception as exc:
         if not args.continue_on_error:
@@ -1467,6 +1462,9 @@ def score_task_with_options(
             "frame_dir": task.frame_dir,
             "model": args.model,
             "api_base_url": args.api_base_url,
+            "timeout": args.timeout,
+            "api_retries": args.api_retries,
+            "api_retry_backoff": args.api_retry_backoff,
             "store": args.store,
             "response_format": args.response_format,
             "provider_reasoning": args.provider_reasoning,
@@ -1477,6 +1475,7 @@ def score_task_with_options(
             "request_jpeg_quality": args.request_jpeg_quality
             if args.request_jpeg_quality > 0
             else None,
+            "explanation_mode": args.explanation_mode,
             "image_detail": args.image_detail,
             "error": str(exc),
             "agreement": 0,
@@ -1564,6 +1563,15 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--explanation-mode",
+        choices=["brief", "evidence"],
+        default="brief",
+        help=(
+            "brief keeps the original score/success/reason JSON. "
+            "evidence asks the model to also output visible evidence and metric_breakdown."
+        ),
+    )
+    parser.add_argument(
         "--max-images",
         type=int,
         default=50,
@@ -1574,6 +1582,18 @@ def parse_args() -> argparse.Namespace:
         type=float,
         default=300.0,
         help="HTTP request timeout in seconds.",
+    )
+    parser.add_argument(
+        "--api-retries",
+        type=int,
+        default=2,
+        help="Retry the exact same API payload this many times after timeout/network errors. Default: 2.",
+    )
+    parser.add_argument(
+        "--api-retry-backoff",
+        type=float,
+        default=10.0,
+        help="Base seconds to wait between API retries; wait time is backoff * attempt. Default: 10.",
     )
     parser.add_argument(
         "--store",
